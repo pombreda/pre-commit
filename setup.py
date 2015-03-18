@@ -39,12 +39,10 @@ setup(
     },
     install_requires=[
         'argparse',
-        'aspy.yaml',
         'cached-property',
         'jsonschema',
         'nodeenv>=0.11.1',
-        'ordereddict',
-        'pyyaml',
+        'ruamel.yaml',
         'simplejson',
         'virtualenv',
     ],

@@ -1,10 +1,11 @@
 from __future__ import unicode_literals
 
+import functools
+
 import pytest
-from aspy.yaml import ordered_load
+import ruamel.yaml
 
 from pre_commit.clientlib.validate_base import get_validator
-from pre_commit.ordereddict import OrderedDict
 from testing.util import get_resource_path
 
 
@@ -68,6 +69,8 @@ def test_returns_object_after_validating(noop_validator):
 def test_load_strategy(noop_validator):
     ret = noop_validator(
         get_resource_path('ordering_data_test.yaml'),
-        load_strategy=ordered_load,
+        load_strategy=functools.partial(
+            ruamel.yaml.load, Loader=ruamel.yaml.RoundTripLoader,
+        ),
     )
-    assert type(ret) is OrderedDict
+    assert type(ret) is ruamel.yaml.comments.CommentedMap

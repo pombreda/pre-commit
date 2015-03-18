@@ -1,16 +1,14 @@
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import functools
 import sys
 
-from aspy.yaml import ordered_dump
-from aspy.yaml import ordered_load
+import ruamel.yaml
 
-import pre_commit.constants as C
 from pre_commit.clientlib.validate_config import CONFIG_JSON_SCHEMA
 from pre_commit.clientlib.validate_config import load_config
 from pre_commit.jsonschema_extensions import remove_defaults
-from pre_commit.ordereddict import OrderedDict
 from pre_commit.repository import Repository
 from pre_commit.util import cmd_output
 from pre_commit.util import cwd
@@ -36,10 +34,10 @@ def _update_repository(repo_config, runner):
 
     # Don't bother trying to update if our sha is the same
     if head_sha == repo_config['sha']:
-        return repo_config
+        return head_sha
 
-    # Construct a new config with the head sha
-    new_config = OrderedDict(repo_config)
+    # Modify the sha to be the head sha
+    new_config = dict(repo_config)
     new_config['sha'] = head_sha
     new_repo = Repository.create(new_config, runner.store)
 
@@ -52,49 +50,43 @@ def _update_repository(repo_config, runner):
             '{0}'.format(', '.join(sorted(hooks_missing)))
         )
 
-    return new_config
+    return head_sha
 
 
 def autoupdate(runner):
     """Auto-update the pre-commit config to the latest versions of repos."""
     retv = 0
-    output_configs = []
     changed = False
 
-    input_configs = load_config(
+    configs = load_config(
         runner.config_file_path,
-        load_strategy=ordered_load,
+        load_strategy=functools.partial(
+            ruamel.yaml.load, Loader=ruamel.yaml.RoundTripLoader,
+        ),
     )
 
-    for repo_config in input_configs:
+    for repo_config in configs:
         sys.stdout.write('Updating {0}...'.format(repo_config['repo']))
         sys.stdout.flush()
+        original_sha = repo_config['sha']
         try:
-            new_repo_config = _update_repository(repo_config, runner)
+            new_sha = _update_repository(repo_config, runner)
         except RepositoryCannotBeUpdatedError as error:
             print(error.args[0])
-            output_configs.append(repo_config)
             retv = 1
             continue
 
-        if new_repo_config['sha'] != repo_config['sha']:
+        if new_sha != original_sha:
             changed = True
-            print(
-                'updating {0} -> {1}.'.format(
-                    repo_config['sha'], new_repo_config['sha'],
-                )
-            )
-            output_configs.append(new_repo_config)
-        else:
-            print('already up to date.')
-            output_configs.append(repo_config)
+            print('updating {0} -> {1}.'.format(original_sha, new_sha))
+            repo_config['sha'] = new_sha
 
     if changed:
         with open(runner.config_file_path, 'w') as config_file:
             config_file.write(
-                ordered_dump(
-                    remove_defaults(output_configs, CONFIG_JSON_SCHEMA),
-                    **C.YAML_DUMP_KWARGS
+                ruamel.yaml.dump(
+                    remove_defaults(configs, CONFIG_JSON_SCHEMA),
+                    Dumper=ruamel.yaml.RoundTripDumper,
                 )
             )
 

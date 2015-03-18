@@ -8,7 +8,9 @@ import subprocess
 
 import mock
 import pytest
+import ruamel.yaml
 
+import pre_commit.constants as C
 from pre_commit.commands.install_uninstall import install
 from pre_commit.commands.run import _get_skips
 from pre_commit.commands.run import _has_unmerged_paths
@@ -19,6 +21,7 @@ from pre_commit.util import cmd_output
 from pre_commit.util import cwd
 from testing.auto_namedtuple import auto_namedtuple
 from testing.fixtures import make_consuming_repo
+from testing.fixtures import write_config
 
 
 @pytest.yield_fixture
@@ -260,8 +263,9 @@ def test_multiple_hooks_same_id(
 ):
     with cwd(repo_with_passing_hook):
         # Add bash hook on there again
-        with io.open('.pre-commit-config.yaml', 'a+') as config_file:
-            config_file.write('    - id: bash_hook\n')
+        config, = ruamel.yaml.load(io.open(C.CONFIG_FILE).read())
+        config['hooks'].append({'id': 'bash_hook'})
+        write_config('.', config)
         cmd_output('git', 'add', '.pre-commit-config.yaml')
         stage_a_file()
 
@@ -274,11 +278,10 @@ def test_stdout_write_bug_py26(
         repo_with_failing_hook, mock_out_store_directory, tmpdir_factory,
 ):
     with cwd(repo_with_failing_hook):
-        # Add bash hook on there again
-        with io.open(
-            '.pre-commit-config.yaml', 'a+', encoding='UTF-8',
-        ) as config_file:
-            config_file.write('        args: ["☃"]\n')
+        # Add unicode args to bash_hook
+        config, = ruamel.yaml.load(io.open(C.CONFIG_FILE).read())
+        config['hooks'][0]['args'] = ['☃']
+        write_config('.', config)
         cmd_output('git', 'add', '.pre-commit-config.yaml')
         stage_a_file()
 
@@ -313,10 +316,9 @@ def test_lots_of_files(mock_out_store_directory, tmpdir_factory):
     git_path = make_consuming_repo(tmpdir_factory, 'python_hooks_repo')
     with cwd(git_path):
         # Override files so we run against them
-        with io.open(
-            '.pre-commit-config.yaml', 'a+',
-        ) as config_file:
-            config_file.write('        files: ""\n')
+        config, = ruamel.yaml.load(io.open(C.CONFIG_FILE).read())
+        config['hooks'][0]['files'] = ''
+        write_config('.', config)
 
         # Write a crap ton of files
         for i in range(400):
